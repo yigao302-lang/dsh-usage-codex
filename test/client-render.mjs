@@ -388,6 +388,7 @@ const cssRules = [
   '.duc-u-heat-pad{width:var(--duc-heat-cell,10px);height:var(--duc-heat-cell,10px);border-radius:3px;background:transparent;}',
   // §9.4 / §9.5 卡片与热力 5 档
   '.duc-u-tile-sub{font-size:11px;color:var(--dsw-alias-label-secondary);overflow:hidden;text-overflow:ellipsis;white-space:nowrap;}',
+  '.duc-u-table-scroll{overflow-x:auto;min-width:0;}',
   '.duc-u-heat-cell[data-l="1"]{background:color-mix(in srgb,var(--duc-heat-hue) 28%,transparent);}',
   '.duc-u-heat-cell[data-l="2"]{background:color-mix(in srgb,var(--duc-heat-hue) 48%,transparent);}',
   '.duc-u-heat-cell[data-l="3"]{background:color-mix(in srgb,var(--duc-heat-hue) 72%,transparent);}',
@@ -624,6 +625,9 @@ check('模型用量表新增「命中率」列（表头顺序 + cacheRead/input�
   headerCells.join(',') === '模型,占比,请求,命中率,输入,输出,缓存命中'
     && modelBody[0][3] === '20.0%' && modelBody[1][3] === '—',
   '表头 ' + headerCells.join(',') + ' · 首行 ' + modelBody[0].join('|') + ' · 次行 ' + modelBody[1].join('|'))
+check('F2 修复：模型表容器 .duc-u-table-scroll 具备横向滚动兜底（窄卡片不再撑破）',
+  findByClass(tree, 'duc-u-table-scroll').length === 1 && /\.duc-u-table-scroll\{overflow-x:auto;min-width:0;\}/.test(capturedCss),
+  '容器节点 ' + findByClass(tree, 'duc-u-table-scroll').length + ' 个 · CSS 命中=' + /\.duc-u-table-scroll\{overflow-x:auto/.test(capturedCss))
 const rankRows = findByClass(tree, 'duc-u-rank-row')
 const rankRowText = (row) => texts(row).join(' ').replace(/\s+/g, ' ').trim()
 check('会话用量排行卡：只取前 10 条，含排名/标题/日期/Token',
@@ -714,6 +718,29 @@ const rangeCall = requestedCalls.filter((c) => c.route.includes('get-usage')).po
 check('范围切换（30天）仍触发全页取数，热力图窗口不受影响',
   !!rangeCall && rangeCall.body.range === '30d' && findByClass(tree, 'duc-u-heat-col').filter((n) => n.props.className === 'duc-u-heat-col').length >= 13,
   '最后一次 get-usage range=' + (rangeCall && rangeCall.body.range))
+
+// ---------- F1 修复：y 轴刻度标签去重（最大值恰为 20000 时曾出现两个「2万」）----------
+// 单日 20000 tokens → rawStep=5000 → step=5000 → 刻度 [5000, 10000, 15000, 20000]，
+// 其中 15000 与 20000 取整后都是「2万」，是重复标签的触发条件。
+activePayload = Object.assign({}, activePayload, {
+  version: (activePayload.version || 0) + 1,
+  stats: Object.assign({}, activePayload.stats, {
+    daily: [{ date: clickedDate, requests: 22, prompt: 14000, completion: 6000, cache_read: 8000, total: 20000, tools: 1, turns: 1, steps: 1 }],
+  }),
+})
+clickTabBtn('趋势')
+tree = await renderTree(() => slotRender())
+await refreshPage()
+const tickNodes = findByClass(tree, 'duc-u-y')
+const tickTexts = tickNodes.map((n) => texts(n).join(''))
+check('F1 修复：y 轴刻度标签无重复（max=20000 → 0 / 5000 / 1万 / 2万，只出现一个「2万」）',
+  tickTexts.length === 4 && new Set(tickTexts).size === tickTexts.length
+    && tickTexts[0] === '0' && tickTexts[tickTexts.length - 1] === '2万',
+  tickTexts.join(' / '))
+const maxTickNode = tickNodes.find((n) => texts(n).join('') === '2万')
+check('F1 修复：去重后保留的「2万」落在它自己的（最高）刻度线上',
+  !!maxTickNode && maxTickNode.props.style.bottom === '200px',
+  maxTickNode ? ('bottom=' + maxTickNode.props.style.bottom) : '未找到标签')
 
 let failed = 0
 for (const c of checks) {
