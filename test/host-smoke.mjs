@@ -1,5 +1,6 @@
 // dsh-usage-codex 宿主端无头冒烟测试（npm test 会执行）：
 // 用合成会话事件驱动真实插件代码，验证 Codex 指标卡所需的字段都能算出来。
+import { readFileSync } from 'node:fs'
 import { apply } from '../lib/index.js'
 
 const DAY = 86400000
@@ -83,6 +84,26 @@ check('longestChat 有值', !!stats.longestChat && stats.longestChat.durationMs 
 check('streaks 计算正确（今昨 2 天）', !!stats.streaks && stats.streaks.current === 2, JSON.stringify(stats.streaks))
 check('dailyModels 按日给出模型明细', !!stats.dailyModels && Object.keys(stats.dailyModels).length > 0, 'days=' + Object.keys(stats.dailyModels || {}).length)
 check('daily 仍按范围返回', Array.isArray(stats.daily) && stats.daily.length > 0, 'len=' + (stats.daily || []).length)
+
+// ── 契约检查：客户端真正读取的字段，宿主必须都给得出来 ──
+// 字段清单直接从 lib/client.js 源码提取，避免手写清单与代码脱节。
+const clientSrc = readFileSync(new URL('../lib/client.js', import.meta.url), 'utf8')
+const usedStatsKeys = [...new Set([...clientSrc.matchAll(/\bstats\.([A-Za-z_]\w*)/g)].map((m) => m[1]))]
+const usedLiveKeys = [...new Set([...clientSrc.matchAll(/\blive\.([A-Za-z_]\w*)/g)].map((m) => m[1]))]
+const usedDayKeys = [...new Set([...clientSrc.matchAll(/\bday\.([A-Za-z_]\w*)/g)].map((m) => m[1]))]
+
+const missingStats = usedStatsKeys.filter((k) => !(k in stats))
+check('契约：客户端读取的 stats 字段宿主全部提供', missingStats.length === 0,
+  missingStats.length ? '缺 ' + missingStats.join(',') : '共 ' + usedStatsKeys.length + ' 个')
+
+const missingLive = usedLiveKeys.filter((k) => !(k in (stats.live || {})))
+check('契约：客户端读取的 live 字段宿主全部提供', missingLive.length === 0,
+  missingLive.length ? '缺 ' + missingLive.join(',') : '共 ' + usedLiveKeys.length + ' 个')
+
+const sampleDay = (stats.dailyAll || [])[0] || {}
+const missingDay = usedDayKeys.filter((k) => !(k in sampleDay))
+check('契约：客户端读取的 daily 条目字段宿主全部提供', missingDay.length === 0,
+  missingDay.length ? '缺 ' + missingDay.join(',') : '共 ' + usedDayKeys.length + ' 个')
 
 let failed = 0
 for (const c of checks) {
