@@ -1,0 +1,10 @@
+# dsh-usage-codex bundle patch：把宿主/浏览器双面插件挂进 web profile。
+# 应用方式（profile bundle 层，走 package.json 的 dsh.bundle.patch 字段）：
+#   dsh plugin --profile <name> add link:/绝对路径/dsh-usage-codex
+#
+# 该行按包名挂载：Node 半边（exports "."）跑在宿主进程里（会话回放、用量聚合、
+# /bmon/api 路由），package.json 里的 dsh.client 声明让浏览器半边
+# （exports "./client"）在 Web GUI 中加载。
+- insert:
+    - id: dsh-usage-codex
+      name: 'dsh-usage-codex'
