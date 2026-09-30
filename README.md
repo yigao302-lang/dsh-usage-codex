@@ -24,7 +24,7 @@
 ## 安装
 
 ```sh
-dsh plugin --profile <profile> add github:gaoyifei/dsh-usage-codex
+dsh plugin --profile <profile> add github:yigao302-lang/dsh-usage-codex
 ```
 
 本地开发（改完刷新页面即生效，宿主端改动需重启 DSH）：
