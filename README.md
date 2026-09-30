@@ -47,7 +47,7 @@ dsh plugin --profile <profile> add link:/绝对路径/dsh-usage-codex
 
 ```sh
 npm run check     # 语法检查（node --check）
-npm test          # 回归测试，共 21 项断言
+npm test          # 回归测试，共 24 项断言
 ```
 
 - `lib/index.js` — 宿主端：会话事件回放、按天 / 按模型 / 按会话聚合、`/dsh-usage-codex/api/*` 路由。
@@ -57,7 +57,7 @@ npm test          # 回归测试，共 21 项断言
 
 | 文件 | 覆盖 |
 | --- | --- |
-| `test/host-smoke.mjs` | 用合成会话事件驱动真实宿主代码，断言 `dailyAll` / `sessionPeak` / `longestChat` / `streaks` / `dailyModels` 字段与取值 |
+| `test/host-smoke.mjs` | 用合成会话事件驱动真实宿主代码，断言 `dailyAll` / `sessionPeak` / `longestChat` / `streaks` / `dailyModels` 字段与取值；并从 `lib/client.js` 源码提取客户端实际读取的字段，反向断言宿主全部提供（防字段漂移） |
 | `test/client-render.mjs` | 最小 React 桩 + `node:vm` 沙箱加载真实 client bundle，渲染组件树并模拟「点开入口 → 点击某天 → 悬浮 → 切换三视图」交互 |
 
 两者都不需要启动 DSH，可在 CI 中直接运行。
