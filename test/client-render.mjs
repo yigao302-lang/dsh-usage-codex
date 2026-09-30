@@ -31,10 +31,15 @@ const React = {
     if (!(i in inst.hooks)) inst.hooks[i] = { current: value }
     return inst.hooks[i]
   },
-  useEffect(fn) {
+  useEffect(fn, deps) {
     const inst = current
     const i = inst.h++
-    if (!(i in inst.hooks)) { inst.hooks[i] = true; fn() }
+    const prev = inst.hooks[i]
+    const list = deps || null
+    // 忠实一点：依赖变化时重新执行，否则 useDayRecords 这类按需请求测不到。
+    const changed = !prev || !list || !prev.deps || prev.deps.length !== list.length
+      || list.some((dep, k) => dep !== prev.deps[k])
+    if (changed) { inst.hooks[i] = { deps: list ? list.slice() : null }; fn() }
   },
 }
 
@@ -142,12 +147,29 @@ const stats = {
 }
 const payload = { ok: true, version: 7, ready: true, updatedAt: now, error: null, stats }
 
+// 该日调用明细：模拟宿主 get-day-records 路由的返回
+const clickedDate = dailyAll[dailyAll.length - 1].date
+const dayRecords = [
+  { time: now - 3600000, sessionId: 'aaaa1111', model: 'gpt-6-sol', input: 900, output: 120, cacheRead: 300 },
+  { time: now - 7200000, sessionId: 'bbbb2222', model: 'deepseek-flash', input: 500, output: 80, cacheRead: 100 },
+]
+const DAY_RECORDS = { [clickedDate]: dayRecords }
+const requestedRoutes = []
+
 // ---------- 沙箱加载真实 bundle ----------
 let captured = null
 const sandbox = {
   window: { __ModuleLoader__: { load: (mod) => { captured = mod } } },
   document: { createElement: () => ({ textContent: '', remove() {} }), head: { appendChild() {} } },
-  fetch: async () => ({ ok: true, status: 200, json: async () => payload }),
+  fetch: async (url, options) => {
+    const route = String(url)
+    requestedRoutes.push(route)
+    const body = JSON.parse((options && options.body) || '{}')
+    if (route.includes('get-day-records')) {
+      return { ok: true, status: 200, json: async () => ({ date: body.date, records: DAY_RECORDS[body.date] || [] }) }
+    }
+    return { ok: true, status: 200, json: async () => payload }
+  },
   console,
   setTimeout,
   clearTimeout,
@@ -201,7 +223,9 @@ target.props.onClick()
 tree = await renderTree(() => slotRender())
 all = texts(tree).join(' | ')
 check('点击某天后展开当日明细', all.includes('当日明细'), '')
-check('点击某天后调用明细进入筛选态', all.includes('在最近 50 条内筛选'), '')
+check('点击某天触发该日明细请求', requestedRoutes.some((r) => r.includes('get-day-records')), '已请求 ' + requestedRoutes.length + ' 次')
+check('调用明细切换到该日数据', all.includes('该日 2 条'), '')
+check('该日两条记录都渲染出来', all.includes('aaaa1111') && all.includes('bbbb2222'), '')
 
 // 模拟悬浮
 const hoverCell = findByClass(tree, 'duc-u-heat-cell').filter((n) => n.props.onMouseEnter)[0]

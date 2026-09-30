@@ -74,6 +74,21 @@ await handler([], res)
 const data = JSON.parse(payload)
 const stats = data.stats || data
 
+/** 以 POST body 调用某个已注册路由。 */
+function callRoute(path, args) {
+  const routeHandler = routes.get(path)
+  if (!routeHandler) return Promise.resolve({ error: '路由未注册: ' + path })
+  return new Promise((resolve) => {
+    const req = { async *[Symbol.asyncIterator]() { yield JSON.stringify(args || {}) } }
+    const fakeRes = { writeHead() {}, end(body) { resolve(JSON.parse(body)) } }
+    routeHandler(req, fakeRes)
+  })
+}
+
+const pad2 = (n) => String(n).padStart(2, '0')
+const today = new Date()
+const todayKey = today.getFullYear() + '-' + pad2(today.getMonth() + 1) + '-' + pad2(today.getDate())
+
 const checks = []
 const check = (name, ok, detail) => { checks.push({ name, ok, detail }) }
 
@@ -104,6 +119,16 @@ const sampleDay = (stats.dailyAll || [])[0] || {}
 const missingDay = usedDayKeys.filter((k) => !(k in sampleDay))
 check('契约：客户端读取的 daily 条目字段宿主全部提供', missingDay.length === 0,
   missingDay.length ? '缺 ' + missingDay.join(',') : '共 ' + usedDayKeys.length + ' 个')
+
+// ── 该日明细路由（热力图点选某天时用） ──
+const dayPayload = await callRoute('/dsh-usage-codex/api/get-day-records', { date: todayKey })
+check('get-day-records 返回该日明细',
+  Array.isArray(dayPayload.records) && dayPayload.records.length === 1,
+  'records=' + (Array.isArray(dayPayload.records) ? dayPayload.records.length : dayPayload.error))
+const emptyDay = await callRoute('/dsh-usage-codex/api/get-day-records', { date: '2000-01-01' })
+check('get-day-records 对无数据日期返回空数组', Array.isArray(emptyDay.records) && emptyDay.records.length === 0, '')
+const badDay = await callRoute('/dsh-usage-codex/api/get-day-records', { date: 'not-a-date' })
+check('get-day-records 拒绝非法日期', !!badDay.error, badDay.error || '未拒绝')
 
 let failed = 0
 for (const c of checks) {
