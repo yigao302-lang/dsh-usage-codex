@@ -30,16 +30,20 @@ function mkEvents(sessionId, dayOffset, tokens, seqBase, title) {
   ]
 }
 
+// 真实会话 id 形如 `session-<uuid>`，这里刻意保留该前缀以覆盖截断逻辑
+const BIG_ID = 'session-11111111-2222-3333-4444-555555555555'
+const SMALL_ID = 'session-99999999-8888-7777-6666-555555555555'
+
 const sessions = [
-  { header: { id: 's-big', cwd: '/tmp/ws' }, title: '大会话' },
-  { header: { id: 's-small', cwd: '/tmp/ws' }, title: '小会话' },
+  { header: { id: BIG_ID, cwd: '/tmp/ws' }, title: '大会话' },
+  { header: { id: SMALL_ID, cwd: '/tmp/ws' }, title: '小会话' },
 ]
 
 const sessionQuery = {
   async listSessions() { return sessions },
   async readSession(id) {
-    if (id === 's-big') return { events: mkEvents('s-big', 0, 5000, 1, '大会话') }
-    return { events: mkEvents('s-small', 1, 1000, 1, '小会话') }
+    if (id === BIG_ID) return { events: mkEvents(BIG_ID, 0, 5000, 1, '大会话') }
+    return { events: mkEvents(SMALL_ID, 1, 1000, 1, '小会话') }
   },
 }
 
@@ -129,6 +133,12 @@ const emptyDay = await callRoute('/dsh-usage-codex/api/get-day-records', { date:
 check('get-day-records 对无数据日期返回空数组', Array.isArray(emptyDay.records) && emptyDay.records.length === 0, '')
 const badDay = await callRoute('/dsh-usage-codex/api/get-day-records', { date: 'not-a-date' })
 check('get-day-records 拒绝非法日期', !!badDay.error, badDay.error || '未拒绝')
+
+// ── 调用明细里的会话标识 ──
+const records = stats.records || []
+const prefixed = records.filter((r) => String(r.sessionId).startsWith('session-'))
+check('调用明细的会话 id 已去掉 session- 前缀', records.length > 0 && prefixed.length === 0,
+  '样例 ' + JSON.stringify((records[0] || {}).sessionId) + ' · 前缀残留 ' + prefixed.length + ' 条')
 
 let failed = 0
 for (const c of checks) {
