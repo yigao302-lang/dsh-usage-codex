@@ -46,8 +46,9 @@ dsh plugin --profile <profile> add link:/绝对路径/dsh-usage-codex
 ## 开发
 
 ```sh
-npm run check     # 语法检查（node --check）
-npm test          # 回归测试，共 29 项断言
+npm run check      # 语法检查（node --check）
+npm test           # 回归测试，共 30 项断言
+npm run check:real # 可选：用本机真实会话日志跑一遍聚合（只读 $DSH_HOME/sessions）
 ```
 
 - `lib/index.js` — 宿主端：会话事件回放、按天 / 按模型 / 按会话聚合、`/dsh-usage-codex/api/*` 路由。
@@ -60,7 +61,7 @@ npm test          # 回归测试，共 29 项断言
 | `test/host-smoke.mjs` | 用合成会话事件驱动真实宿主代码，断言 `dailyAll` / `sessionPeak` / `longestChat` / `streaks` / `dailyModels` 字段与取值；并从 `lib/client.js` 源码提取客户端实际读取的字段，反向断言宿主全部提供（防字段漂移） |
 | `test/client-render.mjs` | 最小 React 桩 + `node:vm` 沙箱加载真实 client bundle，渲染组件树并模拟「点开入口 → 点击某天 → 悬浮 → 切换三视图」交互 |
 
-两者都不需要启动 DSH，可在 CI 中直接运行。
+两者都不需要启动 DSH，可在 CI 中直接运行。`npm run check:real` 是另一层保险：它用**真实会话日志**（含带版本号的 `session.vN.jsonl.zstd`）驱动同一套聚合代码，用来发现合成数据覆盖不到的事件形状差异。它只读不写、不联网，输出为聚合数字。
 
 ## 许可证
 
