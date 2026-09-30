@@ -27,7 +27,8 @@
     "node": ">=22.19"
   },
   "scripts": {
-    "check": "node --check lib/index.js && node --check lib/client.js"
+    "check": "node --check lib/index.js && node --check lib/client.js",
+    "test": "node test/host-smoke.mjs && node test/client-render.mjs"
   },
   "license": "MIT",
   "keywords": [
