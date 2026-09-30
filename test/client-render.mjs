@@ -253,9 +253,22 @@ entryBtn.props.onClick()
 tree = await renderTree(() => slotRender())
 all = texts(tree).join(' | ')
 check('点开后浮层渲染用量页', all.includes('用量统计') && all.includes('用量日历'), all.slice(0, 60))
-check('指标卡：累计 Token', all.includes('累计 Token'), '')
-check('指标卡：单会话峰值', all.includes('单会话峰值') && all.includes('大会话'), '')
-check('指标卡：最长聊天时长', all.includes('最长聊天时长') && all.includes('2h'), '')
+// 分区标签页：概览 / 趋势 / 明细
+const tabBtns = findByClass(tree, 'duc-u-tabs').flatMap((n) => [].concat(n.props.children || []))
+  .filter((n) => n && typeof n.props.onClick === 'function')
+check('顶部为「概览 / 趋势 / 明细」三个分区标签',
+  tabBtns.map((n) => [].concat(n.props.children).join('')).join(',') === '概览,趋势,明细',
+  tabBtns.map((n) => [].concat(n.props.children).join('')).join(','))
+// 指标条：原先重复的「总消耗 / 累计 Token」已合并，主指标 4 张 + 次要指标一行
+const primaryTiles = findByClass(tree, 'duc-u-tile').filter((n) => n.props.className === 'duc-u-tile')
+check('主指标为 4 张瓦片（重复的累计 Token 已与总消耗合并）',
+  primaryTiles.length === 4 && all.includes('总消耗') && !all.includes('累计 Token'),
+  '瓦片 ' + primaryTiles.length + ' 张')
+const chips = findByClass(tree, 'duc-u-chip')
+check('次要指标：单会话峰值与最长聊天在同一行',
+  chips.some((c) => texts(c).join('').includes('单会话峰值'))
+    && chips.some((c) => texts(c).join('').includes('最长聊天') && texts(c).join('').includes('2h')),
+  'chips=' + chips.length)
 check('指标卡：连续天数', all.includes('连续天数') && all.includes('最长 5 天'), '')
 check('热力图三视图按钮', all.includes('每日') && all.includes('每周') && all.includes('累计'), '')
 const cells = findByClass(tree, 'duc-u-heat-cell').filter((n) => n.props.onMouseEnter)
@@ -321,7 +334,7 @@ all = texts(tree).join(' | ')
 const emptyCall = requestedCalls.filter((c) => c.route.includes('get-day-records')).pop()
 check('点击补零日期按日期 key 拉取该日明细',
   emptyCall && emptyCall.body.date === expectWindow[0]
-    && all.includes(expectWindow[0] + ' 当日明细') && all.includes('该日没有调用记录'),
+    && all.includes(expectWindow[0] + ' 当日明细') && all.includes('该日没有模型调用记录'),
   '请求 date=' + (emptyCall && emptyCall.body.date))
 
 // 模拟点击某天
@@ -331,8 +344,23 @@ tree = await renderTree(() => slotRender())
 all = texts(tree).join(' | ')
 check('点击某天后展开当日明细', all.includes(clickedDate + ' 当日明细') && all.includes('✕ 清除'), '')
 check('点击某天触发该日明细请求', requestedRoutes.some((r) => r.includes('get-day-records')), '已请求 ' + requestedRoutes.length + ' 次')
-check('调用明细切换到该日数据', all.includes('该日 2 条'), '')
+
+// 概览 → 明细：用当日明细里的跳转入口切分区，选中日期跨分区保留
+const clickTab = (label) => {
+  const btn = findByClass(tree, 'duc-u-tabs').flatMap((n) => [].concat(n.props.children || []))
+    .find((n) => n && typeof n.props.onClick === 'function' && [].concat(n.props.children).join('') === label)
+  if (btn) btn.props.onClick()
+}
+const openRecords = findByText(tree, '查看该日调用').find((n) => typeof n.props.onClick === 'function')
+if (openRecords) openRecords.props.onClick()
+tree = await renderTree(() => slotRender())
+all = texts(tree).join(' | ')
+check('「查看该日调用」跳转到明细分区', all.includes('调用明细') && all.includes('该日 2 条'), all.slice(0, 60))
 check('该日两条记录都渲染出来', all.includes('aaaa1111') && all.includes('bbbb2222'), '')
+
+// 回到概览，再点同一天 → 取消选中
+clickTab('概览')
+tree = await renderTree(() => slotRender())
 
 // 再点一次同一天 → 取消选中（开关行为与修改前一致）
 const selectedCell = findByClass(tree, 'duc-u-heat-cell').find((n) => n.props.onClick && String(n.props.className).includes('duc-u-heat-sel'))
