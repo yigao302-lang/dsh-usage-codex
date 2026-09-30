@@ -157,6 +157,7 @@ const dayRecords = [
   { time: now - 7200000, sessionId: 'bbbb2222', model: 'deepseek-flash', input: 500, output: 80, cacheRead: 100 },
 ]
 const DAY_RECORDS = { [clickedDate]: dayRecords }
+let activePayload = payload
 const requestedRoutes = []
 const requestedCalls = []
 
@@ -173,7 +174,7 @@ const sandbox = {
     if (route.includes('get-day-records')) {
       return { ok: true, status: 200, json: async () => ({ date: body.date, records: DAY_RECORDS[body.date] || [] }) }
     }
-    return { ok: true, status: 200, json: async () => payload }
+    return { ok: true, status: 200, json: async () => activePayload }
   },
   console,
   setTimeout,
@@ -266,6 +267,7 @@ check('卡片摘要只统计窗口内（120 天前的窗口外数据不计入）
 // ---------- 窗口语义（每日视图）：连续 90 天 + 缺失补零 ----------
 const colNodes = findByClass(tree, 'duc-u-heat-col').filter((n) => n.props.className === 'duc-u-heat-col')
 const gridCells = findByClass(tree, 'duc-u-heat-cell')
+const padCells = findByClass(tree, 'duc-u-heat-pad').filter((n) => n.props.className === 'duc-u-heat-pad')
 const slotsInGrid = []
 colNodes.forEach((col, c) => {
   (col.children || []).forEach((cell, r) => {
@@ -275,10 +277,14 @@ colNodes.forEach((col, c) => {
 check('每日视图为 13–14 列 × 7 行的网格',
   colNodes.length >= 13 && colNodes.length <= 14 && colNodes.every((col) => (col.children || []).length === 7),
   colNodes.length + ' 列 × 7 行')
-check('窗口外的对齐占位格不可交互（7×列数 − 90）',
-  gridCells.length === colNodes.length * 7 && slotsInGrid.length === WINDOW_DAYS
-    && gridCells.filter((n) => typeof n.props.onMouseEnter !== 'function' && n.props['data-l'] === undefined).length === colNodes.length * 7 - WINDOW_DAYS,
-  '总格 ' + gridCells.length + ' / 窗口内 ' + slotsInGrid.length)
+// 占位格必须与数据格分离：用独立类名，因此既不会继承 level 0 的底色，
+// 也不会命中 .duc-u-heat-cell:hover 的描边规则。
+check('窗口外的对齐占位格与数据格分离、不可交互（7×列数 − 90）',
+  gridCells.length === WINDOW_DAYS && slotsInGrid.length === WINDOW_DAYS
+    && padCells.length === colNodes.length * 7 - WINDOW_DAYS
+    && padCells.every((n) => typeof n.props.onMouseEnter !== 'function' && n.props['data-l'] === undefined)
+    && padCells.every((n) => !String(n.props.className).includes('duc-u-heat-cell')),
+  '数据格 ' + gridCells.length + ' / 占位格 ' + padCells.length + ' / 每列 ' + colNodes.length + ' 行')
 
 // 逐格悬浮把日期读回来（走真实的悬浮提示链路），核对窗口逐日连续、无跳格
 const seen = []
@@ -361,7 +367,15 @@ const expectWeekTitles = expectWeeks.map((key) => {
     total += day.total
     requests += day.requests
   }
-  return weekLabelOf(key) + ' 起：' + fmtTokens(total) + ' tokens · ' + requests + ' 次请求'
+  // 部分周（首周/末周）标签取窗口内的真实起止日，而不是窗口之外的周一/周日
+  const windowStart = parseKey(expectWindow[0])
+  const windowEnd = parseKey(expectWindow[expectWindow.length - 1])
+  const monday = parseKey(key)
+  const sunday = new Date(monday.getFullYear(), monday.getMonth(), monday.getDate() + 6)
+  const from = monday.getTime() < windowStart.getTime() ? windowStart : monday
+  const to = sunday.getTime() > windowEnd.getTime() ? windowEnd : sunday
+  const label = (d) => (d.getMonth() + 1) + '/' + d.getDate()
+  return label(from) + '–' + label(to) + '：' + fmtTokens(total) + ' tokens · ' + requests + ' 次请求'
 })
 const emptyWeeks = expectWeeks.filter((key) => !expectTotals.some((d) => mondayKeyOf(d.date) === key)).length
 check('每周视图柱数与每日视图列数一致（同一窗口的周数）',
@@ -371,9 +385,9 @@ check('每周视图按周一为周首逐日聚合，空周渲染 0 值柱',
   weekCols.length === expectWeekTitles.length && weekCols.every((col, i) => col.props.title === expectWeekTitles[i])
     && weekCols.filter((col) => /：0 tokens · 0 次请求$/.test(String(col.props.title))).length === emptyWeeks && emptyWeeks >= 5,
   '空周 ' + emptyWeeks + ' 根 0 值柱 / 首柱 ' + weekCols[0].props.title)
-check('每周视图首柱为窗口首日所在周（周一首日）',
-  String(weekCols[0].props.title).startsWith(weekLabelOf(mondayKeyOf(expectWindow[0])) + ' 起：'),
-  '期望 ' + weekLabelOf(mondayKeyOf(expectWindow[0])) + ' 起 · 实际 ' + weekCols[0].props.title)
+check('每周视图首柱标签为窗口首日，不显示窗口之前的日期',
+  String(weekCols[0].props.title).startsWith(weekLabelOf(expectWindow[0]) + '–'),
+  '期望起点 ' + weekLabelOf(expectWindow[0]) + '（窗口之前的周一为 ' + weekLabelOf(mondayKeyOf(expectWindow[0])) + '）· 实际 ' + weekCols[0].props.title)
 
 // 切换到累计视图（注意：「累计」也出现在指标卡文案里，必须按精确文本取按钮）
 const cumBtn = findByText(tree, '累计').find((n) => typeof n.props.onClick === 'function'
@@ -393,6 +407,43 @@ check('累计视图基于同一窗口逐日累加（90 个点，缺失日按 0�
 check('累计末点数值等于窗口内有数据日期的总量',
   cumHint !== null && cumHint[1] === fmtTokens(expectTokens) && pts[pts.length - 1].split(',')[1] === '0.00',
   '折线累计 ' + (cumHint ? cumHint[1] : '未匹配') + ' / 期望 ' + fmtTokens(expectTokens) + '（' + expectTokens + '）')
+
+// ---------- 时钟漂移加固：宿主给出的日期晚于浏览器今天 ----------
+// 宿主按自己的时钟分桶 date key；两端相差一天时，若窗口末端仍硬取浏览器时钟，
+// 宿主最新一天会落在窗口之外而不可见。这里让 payload 多出「浏览器明天」的数据，
+// 触发重新取数后，该日期必须出现在窗口最后一格且可交互。
+const futureKey = keyOfDate(new Date(todayDate.getFullYear(), todayDate.getMonth(), todayDate.getDate() + 1))
+activePayload = Object.assign({}, payload, {
+  version: payload.version + 1,
+  stats: Object.assign({}, stats, {
+    dailyAll: stats.dailyAll.concat([{ date: futureKey, requests: 5, prompt: 500, completion: 100, cache_read: 200, total: 800, tools: 1, turns: 1, steps: 2 }]),
+  }),
+})
+const dayBtn = findByText(tree, '每日').find((n) => typeof n.props.onClick === 'function'
+  && [].concat(n.props.children).some((c) => c === '每日'))
+if (dayBtn) dayBtn.props.onClick()
+tree = await renderTree(() => slotRender())
+const refreshBtn = findByText(tree, '↻').find((n) => typeof n.props.onClick === 'function')
+if (refreshBtn) refreshBtn.props.onClick()
+tree = await renderTree(() => slotRender())
+const futureSlots = []
+const futureCols = findByClass(tree, 'duc-u-heat-col').filter((n) => n.props.className === 'duc-u-heat-col')
+futureCols.forEach((col) => {
+  (col.children || []).forEach((cell) => {
+    if (cell && cell.host === 'i' && cell.props && typeof cell.props.onMouseEnter === 'function') futureSlots.push(cell)
+  })
+})
+const lastSlot = futureSlots[futureSlots.length - 1]
+let lastTipDate = null
+if (lastSlot) {
+  lastSlot.props.onMouseEnter({ currentTarget: { offsetLeft: 1, offsetTop: 1 } })
+  tree = await renderTree(() => slotRender())
+  const tipNode = findByClass(tree, 'duc-u-tip')[0]
+  lastTipDate = tipNode ? texts(tipNode)[0] : null
+}
+check('数据日期晚于浏览器今天时，窗口锚定到该日期（当天数据不丢）',
+  lastTipDate === futureKey && futureSlots.length === WINDOW_DAYS,
+  '末格 ' + lastTipDate + ' / 期望 ' + futureKey + ' / 窗口内 ' + futureSlots.length)
 
 let failed = 0
 for (const c of checks) {

@@ -59,7 +59,7 @@ dsh plugin --profile <profile> add link:/绝对路径/dsh-usage-codex
 
 ```sh
 npm run check      # 语法检查（node --check）
-npm test           # 回归测试，共 45 项断言（宿主 14 + 客户端 31）
+npm test           # 回归测试，共 46 项断言（宿主 14 + 客户端 32）
 npm run check:real # 可选：用本机真实会话日志跑一遍聚合（只读 $DSH_HOME/sessions）
 ```
 
